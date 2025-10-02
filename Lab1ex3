@@ -1,0 +1,239 @@
+import React, { useState, useRef } from 'react';
+import { Upload, FileText, Activity, BarChart3 } from 'lucide-react';
+
+const FastaAnalyzer = () => {
+  const [fastaContent, setFastaContent] = useState('');
+  const [analysisResult, setAnalysisResult] = useState('');
+  const [sequenceInfo, setSequenceInfo] = useState(null);
+  const fileInputRef = useRef(null);
+
+  const parseFasta = (content) => {
+    const lines = content.split('\n').filter(line => line.trim());
+    if (lines.length === 0) return null;
+
+    const header = lines[0];
+    if (!header.startsWith('>')) {
+      return { error: 'Invalid FASTA format: First line must start with >' };
+    }
+
+    const id = header.substring(1).split(/\s+/)[0];
+    const description = header.substring(1);
+    const sequence = lines.slice(1).join('').toUpperCase();
+
+    return { id, description, sequence };
+  };
+
+  const analyzeSequence = (seq) => {
+    const length = seq.length;
+    const counts = { A: 0, T: 0, G: 0, C: 0, U: 0, other: 0 };
+    
+    for (let char of seq) {
+      if (counts.hasOwnProperty(char)) {
+        counts[char]++;
+      } else if (/[A-Z]/.test(char)) {
+        counts.other++;
+      }
+    }
+
+    let seqType = 'Unknown';
+    if (counts.U > 0 && counts.T === 0) {
+      seqType = 'RNA';
+    } else if (counts.U === 0 && (counts.A + counts.T + counts.G + counts.C) > length * 0.8) {
+      seqType = 'DNA';
+    } else if (counts.other > 0) {
+      seqType = 'Protein';
+    }
+
+    let gcContent = 0;
+    if (seqType === 'DNA' || seqType === 'RNA') {
+      const total = counts.A + counts.T + counts.G + counts.C + counts.U;
+      gcContent = total > 0 ? ((counts.G + counts.C) / total * 100).toFixed(2) : 0;
+    }
+
+    return { length, counts, seqType, gcContent };
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const content = event.target.result;
+        setFastaContent(content);
+        processFile(content);
+      };
+      reader.readAsText(file);
+    }
+  };
+
+  const processFile = (content) => {
+    const parsed = parseFasta(content);
+    
+    if (parsed?.error) {
+      setAnalysisResult(`Error: ${parsed.error}`);
+      setSequenceInfo(null);
+      return;
+    }
+
+    if (!parsed) {
+      setAnalysisResult('Error: Could not parse file');
+      setSequenceInfo(null);
+      return;
+    }
+
+    const analysis = analyzeSequence(parsed.sequence);
+    setSequenceInfo({ ...parsed, ...analysis });
+
+    let output = `=== FASTA FILE ANALYSIS ===\n\n`;
+    output += `Sequence ID: ${parsed.id}\n`;
+    output += `Description: ${parsed.description}\n`;
+    output += `Sequence Type: ${analysis.seqType}\n`;
+    output += `Sequence Length: ${analysis.length} bases/residues\n\n`;
+    
+    output += `=== COMPOSITION ANALYSIS ===\n`;
+    if (analysis.seqType === 'DNA' || analysis.seqType === 'RNA') {
+      output += `Adenine (A): ${analysis.counts.A} (${(analysis.counts.A/analysis.length*100).toFixed(2)}%)\n`;
+      if (analysis.seqType === 'DNA') {
+        output += `Thymine (T): ${analysis.counts.T} (${(analysis.counts.T/analysis.length*100).toFixed(2)}%)\n`;
+      } else {
+        output += `Uracil (U): ${analysis.counts.U} (${(analysis.counts.U/analysis.length*100).toFixed(2)}%)\n`;
+      }
+      output += `Guanine (G): ${analysis.counts.G} (${(analysis.counts.G/analysis.length*100).toFixed(2)}%)\n`;
+      output += `Cytosine (C): ${analysis.counts.C} (${(analysis.counts.C/analysis.length*100).toFixed(2)}%)\n`;
+      output += `\nGC Content: ${analysis.gcContent}%\n`;
+    } else {
+      output += `Total amino acids: ${analysis.length}\n`;
+    }
+
+    output += `\n=== SEQUENCE (first 200 characters) ===\n`;
+    output += parsed.sequence.substring(0, 200);
+    if (parsed.sequence.length > 200) output += '...';
+
+    setAnalysisResult(output);
+  };
+
+  const generateSampleFasta = () => {
+    const samples = [
+      {
+        header: '>NC_000001.11 Homo sapiens chromosome 1, GRCh38.p14 Primary Assembly',
+        sequence: 'ATGCGTACGTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGCTAGC'
+      },
+      {
+        header: '>NM_001301717.2 Homo sapiens insulin (INS), transcript variant 1, mRNA',
+        sequence: 'AUGCCCCUGCAGCCCUUUGUCAACCUUUUGUUUUGGCUUUGCUGUGGGGCUGGGAGCUGGUCCUCCACCCUCUCUGCCACCAUCGUCUUGUCAGCAUUCUGUUGCUGGUGCUUGGGCCAAUGACCCGAAGGUGACAAGCUGCACGUGGUUGUGGCUCUCUGAUUGCGUCUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUGUAUUUUUUUG'
+      },
+      {
+        header: '>sp|P01308|INS_HUMAN Insulin OS=Homo sapiens OX=9606 GN=INS PE=1 SV=1',
+        sequence: 'MALWMRLLPLLALLALWGPDPAAAFVNQHLCGSHLVEALYLVCGERGFFYTPKTRREAEDLQVGQVELGGGPGAGSLQPLALEGSLQKRGIVEQCCTSICSLYQLENYCNFVNQHLCGSHLVEALYLVCGERGFFYTPKTRREAEDLQVGQVELGGGPGAGSLQPLALEGSLQKRGIVEQCCTSICSLYQLENYCN'
+      }
+    ];
+
+    const sample = samples[Math.floor(Math.random() * samples.length)];
+    const fastaText = `${sample.header}\n${sample.sequence.match(/.{1,80}/g).join('\n')}`;
+    
+    setFastaContent(fastaText);
+    processFile(fastaText);
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-6">
+      <div className="max-w-6xl mx-auto">
+        <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 text-white">
+            <div className="flex items-center gap-3 mb-2">
+              <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <h1 className="text-3xl font-bold">FASTA File Analyzer</h1>
+            </div>
+            <p className="text-blue-100">Upload and analyze DNA, RNA, and Protein sequences</p>
+          </div>
+
+          <div className="p-6 bg-gray-50 border-b flex gap-4 flex-wrap">
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileUpload}
+              accept=".fasta,.fa,.fna,.ffn,.faa,.frn"
+              className="hidden"
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-md"
+            >
+              <Upload className="w-5 h-5" />
+              Choose FASTA File
+            </button>
+            <button
+              onClick={generateSampleFasta}
+              className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-md"
+            >
+              <FileText className="w-5 h-5" />
+              Generate Sample
+            </button>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-6 p-6">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-gray-700 font-semibold">
+                <FileText className="w-5 h-5" />
+                <h2>FASTA Input</h2>
+              </div>
+              <textarea
+                value={fastaContent}
+                onChange={(e) => setFastaContent(e.target.value)}
+                placeholder="Paste FASTA content here or upload a file..."
+                className="w-full h-96 p-4 border-2 border-gray-300 rounded-lg font-mono text-sm focus:border-blue-500 focus:outline-none resize-none"
+              />
+              <button
+                onClick={() => processFile(fastaContent)}
+                className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
+              >
+                <Activity className="w-5 h-5" />
+                Analyze Sequence
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-gray-700 font-semibold">
+                <BarChart3 className="w-5 h-5" />
+                <h2>Analysis Results</h2>
+              </div>
+              <textarea
+                value={analysisResult}
+                readOnly
+                placeholder="Analysis results will appear here..."
+                className="w-full h-96 p-4 border-2 border-gray-300 rounded-lg font-mono text-sm bg-gray-50 resize-none"
+              />
+              
+              {sequenceInfo && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                    <div className="text-xs text-blue-600 font-semibold">TYPE</div>
+                    <div className="text-2xl font-bold text-blue-900">{sequenceInfo.seqType}</div>
+                  </div>
+                  <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                    <div className="text-xs text-green-600 font-semibold">LENGTH</div>
+                    <div className="text-2xl font-bold text-green-900">{sequenceInfo.length}</div>
+                  </div>
+                  {sequenceInfo.gcContent > 0 && (
+                    <div className="bg-purple-50 p-4 rounded-lg border border-purple-200 col-span-2">
+                      <div className="text-xs text-purple-600 font-semibold">GC CONTENT</div>
+                      <div className="text-2xl font-bold text-purple-900">{sequenceInfo.gcContent}%</div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-gray-50 p-4 text-center text-sm text-gray-600 border-t">
+            <p>Supports DNA, RNA, and Protein sequences in standard FASTA format</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default FastaAnalyzer;
