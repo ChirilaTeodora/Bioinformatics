@@ -1,0 +1,8 @@
+def find_alphabet(sequence: str):
+    return set(sequence)
+
+seq = input("Enter a sequence: ")
+alphabet = find_alphabet(seq)
+
+print("Sequence:", seq)
+print("Alphabet:", alphabet)
